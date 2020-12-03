@@ -11,8 +11,8 @@ const
 
 proc getName(n: NimNode): string =
   case n.kind
-  of nnkIdent:
-    result = $n.ident
+  of nnkIdent, nnkSym:
+    result = $n
   of nnkAccQuoted:
     result = ""
     for i in 0..<n.len:
@@ -27,6 +27,8 @@ proc getName(n: NimNode): string =
       expectKind(n, nnkIdent)
   of nnkDotExpr:
     result = getName(n[0]) & "." & getName(n[1])
+  of nnkOpenSymChoice, nnkClosedSymChoice:
+    result = getName(n[0])
   else:
     #echo repr n
     expectKind(n, nnkIdent)
@@ -124,6 +126,8 @@ proc tcall2(n, tmpContext: NimNode): NimNode =
             result.add newDotAsgn(tmp, key, newCall("style", toKstring x[1]))
           elif key in SpecialAttrs:
             result.add newDotAsgn(tmp, key, x[1])
+            if key == "value":
+              result.add newCall(bindSym"setAttr", tmp, newLit(key), x[1])
           elif eqIdent(key, "setFocus"):
             result.add newCall(key, tmp, x[1], ident"kxi")
           elif eqIdent(key, "events"):

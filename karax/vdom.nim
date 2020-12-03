@@ -8,7 +8,7 @@ else:
     Node* = ref object
 
 import macros, vstyles, kbase
-from strutils import toUpperAscii
+from strutils import toUpperAscii, toLowerAscii, tokenize
 
 type
   VNodeKind* {.pure.} = enum
@@ -44,6 +44,10 @@ type
     select, datalist, optgroup, option, textarea,
     keygen, output, progress, meter,
     details, summary, command, menu
+
+const selfClosing = {area, base, br, col, embed, hr, img, input,
+  link, meta, param, source, track, wbr}
+
 
 type
   EventKind* {.pure.} = enum ## The events supported by the virtual DOM.
@@ -89,10 +93,17 @@ type
     onanimationiteration,
 
     onkeyupenter, ## vdom extension: an input field received the ENTER key press
-    onkeyuplater  ## vdom extension: a key was pressed and some time
+    onkeyuplater,  ## vdom extension: a key was pressed and some time
                   ## passed (useful for on-the-fly text completions)
+    onload, # img
 
-
+    ontransitioncancel,
+    ontransitionend,
+    ontransitionrun,
+    ontransitionstart,
+    
+    onwheel # fires when the user rotates a wheel button on a pointing device.
+    
 macro buildLookupTables(): untyped =
   var a = newTree(nnkBracket)
   for i in low(VNodeKind)..high(VNodeKind):
@@ -294,6 +305,12 @@ proc sameAttrs*(a, b: VNode): bool =
 proc addEventListener*(n: VNode; event: EventKind; handler: EventHandler) =
   n.events.add((event, handler, nil))
 
+when kstring is cstring:
+  proc len(a: kstring): int =
+    # xxx: maybe move where kstring is defined
+    # without this, `n.field.len` fails on js (non web) platform
+    if a == nil: 0 else: a.len
+
 template toStringAttr(field) =
   if n.field.len > 0:
     result.add " " & astToStr(field) & " = " & $n.field
@@ -399,7 +416,17 @@ proc add*(result: var string, n: VNode, indent = 0, indWidth = 2) =
       result.add("=\"")
       result.addEscapedAttr(v)
       result.add('"')
-    # XXX add style to string
+    if n.style != nil:
+      result.add " style=\""
+      for k, v in pairs(n.style):
+        if v.len == 0: continue
+        for t in tokenize($k, seps={'A' .. 'Z'}):
+          if t.isSep: result.add '-'
+          result.add toLowerAscii(t.token)
+        result.add ": "
+        result.add v
+        result.add "; "
+      result.add('"')
     if n.len > 0:
       result.add('>')
       if n.len > 1:
@@ -424,8 +451,13 @@ proc add*(result: var string, n: VNode, indent = 0, indWidth = 2) =
       result.add("</")
       result.add(kind)
       result.add(">")
-    else:
+    elif n.kind in selfClosing:
       result.add(" />")
+    else:
+      result.add(">")
+      result.add("</")
+      result.add(kind)
+      result.add(">")
 
 
 proc `$`*(n: VNode): kstring =

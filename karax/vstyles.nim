@@ -1,5 +1,9 @@
+##[
+see examples/hellostyle.nim
+]##
 
-import macros, kbase
+import std/[macros, strutils]
+import kbase
 
 when defined(js):
   import kdom, jdict
@@ -234,7 +238,10 @@ proc eq*(a, b: VStyle): bool =
     if a[i] != b[i]: return false
   return true
 
-proc setAttr(s: VStyle; a, value: kstring) {.noSideEffect.} =
+proc setAttr*(s: VStyle; a, value: kstring) {.noSideEffect.} =
+  ## inserts (a, value) in sorted order of key `a`
+  # worst case quadratic complexity (if given styles in reverse order), hopefully
+  # not a concern assuming small cardinal
   var i = 0
   while i < s.len:
     if s[i] == a:
@@ -243,8 +250,8 @@ proc setAttr(s: VStyle; a, value: kstring) {.noSideEffect.} =
     elif s[i] > a:
       s.add ""
       s.add ""
-      # insertion point here:
-      for j in countdown(s.len-1, i, 2):
+      # insertion point here, shift all remaining pairs by 2 indexes
+      for j in countdown(s.len-1, i+3, 2):
         s[j] = s[j-2]
         s[j-1] = s[j-3]
       s[i] = a
@@ -288,6 +295,24 @@ proc style*(a: StyleAttr; val: kstring): VStyle {.noSideEffect.} =
     new(result)
     result[] = @[]
   result.setAttr a, val
+
+proc toCss*(a: string): VStyle =
+  ##[
+  See example in hellostyle.nim
+  Allows passing a css string directly, eg:
+  tdiv(style = style((fontStyle, "italic".kstring), (color, "orange".kstring))): discard
+  tdiv(style = "font-style: oblique; color: pink".toCss): discard
+  ]##
+  when defined(js):
+    result = newJSeq[cstring]()
+  else:
+    new(result)
+    result[] = @[]
+  for ai in a.split(";"):
+    var ai = ai.strip
+    if ai.len == 0: continue
+    let aj = ai.strip.split(":", maxsplit=1)
+    result.setAttr(aj[0], aj[1])
 
 when defined(js):
   proc setStyle(d: Style; key, val: cstring) {.importcpp: "#[#] = #", noSideEffect.}
